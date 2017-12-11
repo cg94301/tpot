@@ -5,6 +5,7 @@ from tpot import TPOTClassifier
 from sklearn.datasets import load_digits
 from sklearn.model_selection import train_test_split
 from sklearn.externals import joblib
+import pickle
 
 from sklearn.cross_validation import StratifiedKFold
 from sklearn.grid_search import GridSearchCV, RandomizedSearchCV
@@ -19,6 +20,10 @@ import timeit
 import simplerandom.iterators as sri
 from datetime import datetime
 
+import jsonpickle
+import jsonpickle.ext.numpy as jsonpickle_numpy
+jsonpickle_numpy.register_handlers()
+
 markets = ['F_AD', 'F_BO', 'F_BP', 'F_C', 'F_CC', 'F_CD',
            'F_CL', 'F_CT', 'F_DX', 'F_EC', 'F_ED', 'F_ES', 'F_FC','F_FV', 'F_GC',
            'F_HG', 'F_HO', 'F_JY', 'F_KC', 'F_LB', 'F_LC', 'F_LN', 'F_MD', 'F_MP',
@@ -29,13 +34,14 @@ markets = ['F_AD', 'F_BO', 'F_BP', 'F_C', 'F_CC', 'F_CD',
 markets = ['F_AD']
 
 def automl(market):
+    print "evaluating market ", market
     dt = datetime.now()
     #rng = sri.KISS(123958, 34987243, 3495825239, 2398172431)
     rng = sri.KISS(dt.microsecond)
 
     csv = pd.read_csv('data/' + market + '.csv')
     print csv.shape
-    print csv.columns
+    #print csv.columns
 
     # Dropping rows with label 0
     # Doing binary logistic regression here
@@ -62,15 +68,17 @@ def automl(market):
         #'gamma': [0,0.5,1.0],
         #'subsample': [0.4,0.6,0.8,1.0],
         #'colsample_bylevel': [0.5,0.75,1.0],
-        'max_depth': [1,2,3],
-        'learning_rate': [1,0.1,0.01],
-        'silent': [1.0],
+        'max_depth': [1], # [1,2,3]
+        'learning_rate': [1], # [1,0.1,0.01]
+        #'silent': [1.0],
         'nthread': [-1],
-        'n_estimators': [50,75,100,125,150,200,250,300,350,400,450,500,550,600,650,700,750,800,850,900,950,1000]}
+        #'n_estimators': [50,75,100,125,150,200,250,300,350,400,450,500,550,600,650,700,750,800,850,900,950,1000]}
+        'n_estimators': [100]}
     }
 
     # default: gen=5, pop=20
-    pipeline_optimizer = TPOTClassifier(generations=10, population_size=100, cv=cv, n_jobs=-1,
+    # target: gen=10, pop=100
+    pipeline_optimizer = TPOTClassifier(generations=2, population_size=20, cv=cv, n_jobs=-1,
                                         random_state=seed, verbosity=3, periodic_checkpoint_folder='checkpoints',config_dict=tpot_config)
     
     
@@ -85,21 +93,55 @@ def automl(market):
     print X_test.shape
     
     # Performance on test set. Might (probably will) differ from best pipeline score.
+    #print X_test
+    joblib.dump(X_test, "xtest.txt")
     print(pipeline_optimizer.predict(X_test))
     print(pipeline_optimizer.predict_proba(X_test))
     
-    # Write out best pipeline
+    # Write out best pipeline as python code
     t = time.localtime()
     timestamp = time.strftime('%m%d%Y_%H%M%S', t)
     pipeline_optimizer.export('export/tpot_exported_pipeline_' + market + '_' + timestamp + '_' + str(seed) + '.py')
+
+    # Serialize Pipe as JSON. Because dump string does not ASCII encode bytearrays.
+    clfname = 'clfs/pipe_' + market + '_' + timestamp + '_' + str(seed) + '.json'
+    frozen = jsonpickle.encode(pipeline_optimizer.fitted_pipeline_)
+    f = open(clfname,'w')
+    f.write(frozen)
+    f.close()
+
+    f = open(clfname,'r')
+    frozen = f.read()
+    f.close()
+    
+    thawed = jsonpickle.decode(frozen)
+    #thawed = jsonpickle.decode(jsonstring)
+    print "*** debug"
+
+    print thawed.predict(X_test)
+    print thawed.predict_proba(X_test)
+    
     
     #ei = pipeline_optimizer.evaluated_individuals_
-    einame = 'clfs/pipe_' + market + '_' + timestamp + '_' + str(seed) + '.pkl'
-    joblib.dump(pipeline_optimizer.fitted_pipeline_, einame)    
-    tmp = joblib.load(einame)
+    #einame = 'clfs/pipe_' + market + '_' + timestamp + '_' + str(seed) + '.pkl'
+    #joblib.dump(pipeline_optimizer.fitted_pipeline_, einame)    
+    #tmp = joblib.load(einame)
     #print "read back from joblib:", tmp
-    print(tmp.predict_proba(X_test))
+    #print(tmp.predict_proba(X_test))
 
+    #clfstring = pickle.dumps(pipeline_optimizer.fitted_pipeline_, 0)
+
+    #print type(clfstring)
+    #print len(clfstring)
+
+    #clftxt = 'pipe_' + market + '_' + timestamp + '_' + str(seed) + '.txt'
+    #f = open('txt/' + clftxt,'w')
+    #f.write(clfstring)
+    #f.close()
+
+    #tmp = pickle.loads(clfstring)
+    #print "test string"
+    #print(tmp.predict_proba(X_test))
 
 if __name__ == '__main__':
 
