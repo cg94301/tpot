@@ -1,4 +1,4 @@
-# Genetic programming approach to finding algorithmic trading stragies
+# Genetic programming approach to finding algorithmic trading strategies
 
 Mod of TPOT 
 
